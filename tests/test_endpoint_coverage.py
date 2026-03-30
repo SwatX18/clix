@@ -46,7 +46,14 @@ KNOWN_DYNAMIC_OPERATIONS = {
     "TweetResultsByRestIds",
     "UserByScreenName",
     "UsersByRestIds",
+    # Read operations (viewer)
+    "Viewer",
     # Write operations (graphql_post)
+    "ArticleEntityDraftCreate",
+    "ArticleEntityPublish",
+    "ArticleEntityUpdateContent",
+    "ArticleEntityUpdateCoverMedia",
+    "ArticleEntityUpdateTitle",
     "CreateBookmark",
     "CreateList",
     "CreateRetweet",
