@@ -50,9 +50,7 @@ clix auth login
 | Command | Description |
 |---|---|
 | `clix post <text> [--reply-to ID\|URL] [--image FILE]` | Post a tweet (up to 4 images) |
-| `clix post --article FILE.md [--image COVER]` | Post an article from Markdown (Premium)\* |
-
-\* Markdown articles support: headings, lists, blockquotes, bold, italic, strikethrough, links, fenced code blocks, and LaTeX (`$...$` inline, `$$...$$` display).
+| `clix post --article FILE.md [--image COVER]` | Post an article from Markdown (Premium) |
 | `clix delete <id>` | Delete a tweet |
 | `clix like <id>` / `clix unlike <id>` | Like / unlike |
 | `clix retweet <id>` / `clix unretweet <id>` | Retweet / undo |
@@ -61,6 +59,8 @@ clix auth login
 | `clix block <handle>` / `clix unblock <handle>` | Block / unblock |
 | `clix mute <handle>` / `clix unmute <handle>` | Mute / unmute |
 | `clix download <tweet-id> [--output-dir DIR]` | Download media |
+
+> Articles support: headings, lists, blockquotes, bold, italic, strikethrough, links, fenced code blocks, and LaTeX (`$...$` inline, `$$...$$` display).
 
 ### Scheduled Tweets
 
