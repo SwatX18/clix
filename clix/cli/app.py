@@ -550,7 +550,12 @@ def post(
     yaml_output: Annotated[bool, typer.Option("--yaml", help="YAML output")] = False,
     account: Annotated[str | None, typer.Option(help="Account name")] = None,
 ):
-    """Post a new tweet, optionally with images or as a long-form article."""
+    """Post a new tweet, optionally with images or as a long-form article.
+
+    With --article, the Markdown file supports: headings (# ##), lists (- *),
+    blockquotes (>), bold (**), italic (*), strikethrough (~~), links, code blocks
+    (``` fenced), and LaTeX ($...$ inline, $$...$$ display).
+    """
     validate_output_flags(json_output, yaml_output)
     from clix.core.api import (
         MAX_IMAGES,

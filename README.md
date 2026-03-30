@@ -50,7 +50,9 @@ clix auth login
 | Command | Description |
 |---|---|
 | `clix post <text> [--reply-to ID\|URL] [--image FILE]` | Post a tweet (up to 4 images) |
-| `clix post --article FILE.md [--image COVER]` | Post an article from Markdown (Premium) |
+| `clix post --article FILE.md [--image COVER]` | Post an article from Markdown (Premium)\* |
+
+\* Markdown articles support: headings, lists, blockquotes, bold, italic, strikethrough, links, fenced code blocks, and LaTeX (`$...$` inline, `$$...$$` display).
 | `clix delete <id>` | Delete a tweet |
 | `clix like <id>` / `clix unlike <id>` | Like / unlike |
 | `clix retweet <id>` / `clix unretweet <id>` | Retweet / undo |

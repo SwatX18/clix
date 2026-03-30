@@ -59,6 +59,8 @@ clix post "quote" --quote URL            # Quote tweet
 clix post --article article.md           # Post article from Markdown (Premium)
 clix post "Title" --article file.md      # Article with custom title
 clix post --article file.md --image cover.jpg  # Article with cover image
+# Markdown supports: # headings, - lists, > quotes, **bold**, *italic*,
+# ~~strikethrough~~, [links](url), ```code blocks```, LaTeX ($..$ / $$..$$)
 clix delete TWEET_ID --force             # Delete (--force skips confirm)
 clix like TWEET_ID                       # Like a tweet
 clix unlike TWEET_ID                     # Unlike
