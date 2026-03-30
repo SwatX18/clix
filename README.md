@@ -50,6 +50,7 @@ clix auth login
 | Command | Description |
 |---|---|
 | `clix post <text> [--reply-to ID\|URL] [--image FILE]` | Post a tweet (up to 4 images) |
+| `clix post --article FILE.md [--image COVER]` | Post an article from Markdown (Premium) |
 | `clix delete <id>` | Delete a tweet |
 | `clix like <id>` / `clix unlike <id>` | Like / unlike |
 | `clix retweet <id>` / `clix unretweet <id>` | Retweet / undo |
@@ -152,7 +153,7 @@ Or with explicit auth:
 }
 ```
 
-**46 tools** covering all commands: feed, search, trending, tweets, users, bookmarks, lists, DMs, jobs, post, delete, like, unlike, retweet, unretweet, bookmark, unbookmark, follow, unfollow, block, unblock, mute, unmute, schedule, download, and more.
+**48 tools** covering all commands: feed, search, trending, tweets, users, bookmarks, lists, DMs, jobs, post, post article, delete, like, unlike, retweet, unretweet, bookmark, unbookmark, follow, unfollow, block, unblock, mute, unmute, schedule, download, check premium, and more.
 
 ## Proxy Support
 

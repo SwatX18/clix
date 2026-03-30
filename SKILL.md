@@ -56,6 +56,9 @@ clix bookmarks                           # View your bookmarks
 clix post "Hello world"                  # Post a tweet
 clix post "reply text" --reply-to ID     # Reply to tweet
 clix post "quote" --quote URL            # Quote tweet
+clix post --article article.md           # Post article from Markdown (Premium)
+clix post "Title" --article file.md      # Article with custom title
+clix post --article file.md --image cover.jpg  # Article with cover image
 clix delete TWEET_ID --force             # Delete (--force skips confirm)
 clix like TWEET_ID                       # Like a tweet
 clix unlike TWEET_ID                     # Unlike
@@ -139,7 +142,7 @@ clix auth status --json                  # JSON auth check
 
 ## MCP Server
 
-clix is also available as an MCP server with 14 tools for any MCP-compatible client.
+clix is also available as an MCP server with 48 tools for any MCP-compatible client.
 
 ```bash
 clix mcp    # Start stdio MCP server

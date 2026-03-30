@@ -34,7 +34,7 @@ clix/
 │   └── jobs.py        # job search commands
 ├── mcp/               # MCP server
 │   ├── __init__.py
-│   └── server.py      # FastMCP server with 46 tools
+│   └── server.py      # FastMCP server with 48 tools
 ├── core/              # business logic (no CLI deps)
 │   ├── api.py         # API methods (read + write + DM + lists + media + jobs)
 │   ├── auth.py        # cookie extraction & credential management
@@ -50,7 +50,7 @@ clix/
 ├── display/           # rich formatting (humans only)
 │   └── formatter.py   # tweet/user/thread/list/trend/DM/article/job formatting
 └── utils/
-    ├── article.py     # Draft.js → Markdown converter (Twitter Articles)
+    ├── article.py     # Draft.js ↔ Markdown converter (Twitter Articles)
     ├── filter.py      # engagement scoring
     └── rate_limit.py  # rate limiting with jitter
 ```
@@ -69,6 +69,7 @@ clix/
 
 ### Actions
 - `clix post <text> [--reply-to ID] [--quote URL] [--image FILE]` — post tweet (with images)
+- `clix post --article FILE.md [--image COVER]` — post article from Markdown (requires Premium)
 - `clix delete <id> [--force]` — delete tweet
 - `clix like/unlike <id>` — like operations
 - `clix retweet/unretweet <id>` — retweet operations
@@ -114,10 +115,10 @@ clix/
 - `--account` / `-a` — use specific account
 
 ## MCP Server
-`clix mcp` launches a stdio MCP server with 46 tools:
+`clix mcp` launches a stdio MCP server with 48 tools:
 - **Read:** `get_feed`, `search`, `get_tweet`, `get_user`, `list_bookmarks`, `get_trending`, `get_lists`, `get_list_timeline`, `get_list_members`, `get_tweets_batch`, `get_users_batch`, `dm_inbox`, `list_scheduled_tweets`, `search_jobs`, `get_job`
-- **Write:** `post_tweet`, `delete_tweet`, `like`, `unlike`, `retweet`, `unretweet`, `bookmark`, `unbookmark`, `follow`, `unfollow`, `block`, `unblock`, `mute`, `unmute`, `create_list`, `delete_list`, `add_list_member`, `remove_list_member`, `pin_list`, `unpin_list`, `dm_send`, `schedule_tweet`, `cancel_scheduled_tweet`, `download_media`
-- **Info:** `auth_status`
+- **Write:** `post_tweet`, `post_article`, `delete_tweet`, `like`, `unlike`, `retweet`, `unretweet`, `bookmark`, `unbookmark`, `follow`, `unfollow`, `block`, `unblock`, `mute`, `unmute`, `create_list`, `delete_list`, `add_list_member`, `remove_list_member`, `pin_list`, `unpin_list`, `dm_send`, `schedule_tweet`, `cancel_scheduled_tweet`, `download_media`
+- **Info:** `auth_status`, `check_premium`
 
 ## Conventions
 - All CLI commands support `--json` flag for structured JSON output
