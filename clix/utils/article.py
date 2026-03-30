@@ -1,8 +1,10 @@
-"""Convert Twitter Article Draft.js content to Markdown."""
+"""Convert between Twitter Article Draft.js content and Markdown."""
 
 from __future__ import annotations
 
+import random
 import re
+import string
 from typing import Any
 
 _IMAGE_URL_PATTERN = re.compile(
@@ -208,3 +210,256 @@ def extract_article_metadata(article_data: dict[str, Any]) -> dict[str, Any]:
         "cover_image_url": cover_image,
         "lifecycle_state": lifecycle_state,
     }
+
+
+# =============================================================================
+# Markdown → Draft.js content_state (reverse of article_to_markdown)
+# =============================================================================
+
+
+def _generate_block_key() -> str:
+    """Generate a random 5-char alphanumeric key like Draft.js."""
+    return "".join(random.choices(string.ascii_lowercase + string.digits, k=5))
+
+
+class _InlineResult:
+    """Result of extracting inline styles and link entities from markdown text."""
+
+    def __init__(self) -> None:
+        self.text: str = ""
+        self.styles: list[dict[str, Any]] = []
+        self.link_entities: list[tuple[int, int, str]] = []  # (offset, length, url)
+
+
+def _extract_inline_formatting(text: str) -> _InlineResult:
+    """Extract Markdown inline styles and links from text.
+
+    Processes [text](url) links, **bold**, *italic*, and ~~strikethrough~~.
+    Backtick code markers are stripped (X articles don't support Code inline style).
+    Returns an _InlineResult with clean text, style ranges, and link entities.
+    """
+    result = _InlineResult()
+
+    def _strip_markers(
+        txt: str, pattern: re.Pattern[str], style: str
+    ) -> tuple[str, list[dict[str, Any]]]:
+        found: list[dict[str, Any]] = []
+        result_parts: list[str] = []
+        last_end = 0
+        for match in pattern.finditer(txt):
+            result_parts.append(txt[last_end : match.start()])
+            content = match.group(1)
+            offset = len("".join(result_parts))
+            result_parts.append(content)
+            last_end = match.end()
+            found.append({"offset": offset, "length": len(content), "style": style})
+        result_parts.append(txt[last_end:])
+        return "".join(result_parts), found
+
+    # Extract links [text](url) first
+    link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+    links: list[tuple[int, int, str]] = []
+    parts: list[str] = []
+    last_end = 0
+    for match in link_pattern.finditer(text):
+        parts.append(text[last_end : match.start()])
+        link_text = match.group(1)
+        link_url = match.group(2)
+        offset = len("".join(parts))
+        parts.append(link_text)
+        last_end = match.end()
+        links.append((offset, len(link_text), link_url))
+    parts.append(text[last_end:])
+    text = "".join(parts)
+
+    # Strip code backticks (X article API doesn't support Code inline style)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+
+    # Preserve inline LaTeX $...$ (don't strip as formatting markers)
+    # LaTeX is rendered natively by X — pass through as-is
+
+    # Bold (**...**) — before italic so ** is matched before *
+    text, bold_styles = _strip_markers(text, re.compile(r"\*\*(.+?)\*\*"), "Bold")
+    result.styles.extend(bold_styles)
+
+    # Italic (*...*)
+    text, italic_styles = _strip_markers(text, re.compile(r"\*(.+?)\*"), "Italic")
+    result.styles.extend(italic_styles)
+
+    # Strikethrough (~~...~~) — after bold/italic so offsets are correct
+    text, strike_styles = _strip_markers(text, re.compile(r"~~(.+?)~~"), "Strikethrough")
+    result.styles.extend(strike_styles)
+
+    result.text = text
+    result.link_entities = links
+    return result
+
+
+def _make_block(
+    text: str,
+    block_type: str,
+    inline_styles: list[dict[str, Any]] | None = None,
+    entity_ranges: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Create a Draft.js block dict matching the X article API schema.
+
+    X uses snake_case field names and requires data/entity_ranges/inline_style_ranges
+    to always be present.
+    """
+    return {
+        "data": {},
+        "text": text,
+        "key": _generate_block_key(),
+        "type": block_type,
+        "entity_ranges": entity_ranges or [],
+        "inline_style_ranges": inline_styles or [],
+    }
+
+
+def markdown_to_content_state(markdown_text: str) -> tuple[dict[str, Any], str]:
+    """Convert Markdown text to Draft.js content_state for X articles.
+
+    Supported block types: header-one, header-two, blockquote,
+    unordered-list-item, ordered-list-item, unstyled.
+    Supported inline styles: Bold, Italic, Strikethrough.
+    Code blocks use MARKDOWN entities, LaTeX uses LATEX entities (both atomic).
+    Links are converted to LINK entities.
+
+    Returns (content_state, title) where title is the first H1 heading found.
+    """
+    blocks: list[dict[str, Any]] = []
+    entity_map: dict[str, dict[str, Any]] = {}
+    entity_counter = 0
+    title = ""
+
+    def _add_entity(entity_type: str, mutability: str, data: dict[str, Any] | None = None) -> int:
+        """Register an entity and return its key (int)."""
+        nonlocal entity_counter
+        entity_map[str(entity_counter)] = {
+            "type": entity_type,
+            "mutability": mutability,
+            "data": data or {},
+        }
+        idx = entity_counter
+        entity_counter += 1
+        return idx
+
+    def _add_code_block(lines: list[str], lang: str) -> None:
+        """Add a code block as atomic MARKDOWN entity."""
+        fence = f"```{lang}" if lang else "```"
+        markdown = fence + "\n" + "\n".join(lines) + "\n```"
+        ek = _add_entity("MARKDOWN", "Mutable", {"markdown": markdown})
+        blocks.append(_make_block("", "unstyled"))
+        blocks.append(
+            _make_block(" ", "atomic", entity_ranges=[{"key": ek, "offset": 0, "length": 1}])
+        )
+        blocks.append(_make_block("", "unstyled"))
+
+    def _add_latex_block(formula: str) -> None:
+        """Add a LaTeX block as atomic LATEX entity."""
+        ek = _add_entity("LATEX", "Immutable")
+        blocks.append(_make_block("", "unstyled"))
+        blocks.append(
+            _make_block(
+                formula,
+                "atomic",
+                entity_ranges=[{"key": ek, "offset": 0, "length": len(formula)}],
+            )
+        )
+        blocks.append(_make_block("", "unstyled"))
+
+    def _process_line(raw_text: str, block_type: str = "unstyled") -> None:
+        """Parse inline formatting, links, and inline LaTeX from text."""
+        nonlocal entity_counter
+
+        # Single-line display LaTeX: $$formula$$
+        display_match = re.match(r"^\$\$(.+)\$\$$", raw_text.strip())
+        if display_match:
+            _add_latex_block(display_match.group(1))
+            return
+
+        # Split line on inline LaTeX $...$, emitting text blocks and atomic LaTeX blocks
+        latex_pattern = re.compile(r"(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)")
+        parts = latex_pattern.split(raw_text)
+        # Even indices are text, odd indices are LaTeX formulas
+        has_latex = len(parts) > 1
+        for i, part in enumerate(parts):
+            if i % 2 == 1:
+                _add_latex_block(part)
+            elif part.strip() or not has_latex:
+                fmt = _extract_inline_formatting(part)
+                ranges: list[dict[str, Any]] = []
+                for offset, length, url in fmt.link_entities:
+                    entity_map[str(entity_counter)] = {
+                        "type": "LINK",
+                        "mutability": "Mutable",
+                        "data": {"url": url},
+                    }
+                    ranges.append({"key": entity_counter, "offset": offset, "length": length})
+                    entity_counter += 1
+                blocks.append(_make_block(fmt.text, block_type, fmt.styles, ranges))
+
+    in_code_block = False
+    code_lang = ""
+    code_lines: list[str] = []
+    for line in markdown_text.split("\n"):
+        # Toggle code fences
+        if line.strip().startswith("```"):
+            if in_code_block:
+                _add_code_block(code_lines, code_lang)
+                code_lines = []
+                code_lang = ""
+            else:
+                code_lang = line.strip()[3:].strip()
+            in_code_block = not in_code_block
+            continue
+
+        if in_code_block:
+            code_lines.append(line)
+            continue
+
+        if not line.strip():
+            continue
+
+        trimmed = line.lstrip()
+
+        # Determine block type and strip markdown prefix
+        block_type = "unstyled"
+        text = trimmed
+
+        if trimmed.startswith("# ") and not trimmed.startswith("## "):
+            block_type = "header-one"
+            text = trimmed[2:]
+            if not title:
+                title = text.strip()
+        elif trimmed.startswith("## ") and not trimmed.startswith("### "):
+            block_type = "header-two"
+            text = trimmed[3:]
+        elif trimmed.startswith("### "):
+            block_type = "header-two"
+            text = trimmed[4:]
+        elif trimmed.startswith("> "):
+            block_type = "blockquote"
+            text = trimmed[2:]
+        elif re.match(r"^\d+\.\s", trimmed):
+            block_type = "ordered-list-item"
+            text = re.sub(r"^\d+\.\s+", "", trimmed)
+        elif trimmed.startswith("- ") or trimmed.startswith("* "):
+            block_type = "unordered-list-item"
+            text = trimmed[2:]
+        elif trimmed == "---" or trimmed == "***":
+            blocks.append(_make_block("", "unstyled"))
+            continue
+
+        _process_line(text, block_type)
+
+    # Handle unclosed code block
+    if code_lines:
+        _add_code_block(code_lines, code_lang)
+
+    entity_map_list: list[dict[str, Any]] = [{"key": k, "value": v} for k, v in entity_map.items()]
+    content_state: dict[str, Any] = {
+        "blocks": blocks,
+        "entity_map": entity_map_list,
+    }
+    return content_state, title

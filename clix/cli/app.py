@@ -534,7 +534,7 @@ def _parse_schedule_time(time_str: str):
 @app.command("post")
 def post(
     ctx: typer.Context,
-    text: Annotated[str, typer.Argument(help="Tweet text")],
+    text: Annotated[str, typer.Argument(help="Tweet text (optional if --article is used)")] = "",
     reply_to: Annotated[
         str | None, typer.Option("--reply-to", help="Tweet ID or URL to reply to")
     ] = None,
@@ -542,15 +542,21 @@ def post(
     image: Annotated[
         list[Path] | None, typer.Option("--image", "-i", help="Image to attach (up to 4)")
     ] = None,
+    article: Annotated[
+        Path | None,
+        typer.Option("--article", "-A", help="Markdown file to post as article (requires Premium)"),
+    ] = None,
     json_output: Annotated[bool, typer.Option("--json", help="JSON output")] = False,
     yaml_output: Annotated[bool, typer.Option("--yaml", help="YAML output")] = False,
     account: Annotated[str | None, typer.Option(help="Account name")] = None,
 ):
-    """Post a new tweet, optionally with images."""
+    """Post a new tweet, optionally with images or as a long-form article."""
     validate_output_flags(json_output, yaml_output)
     from clix.core.api import (
         MAX_IMAGES,
+        create_article,
         create_tweet,
+        is_premium_user,
         upload_media,
     )
     from clix.core.api import _validate_media_file as validate_media_file
@@ -558,6 +564,65 @@ def post(
     compact = is_compact_mode(ctx)
     if compact and json_output:
         raise typer.BadParameter("--compact and --json are mutually exclusive")
+
+    # Must provide either text or --article
+    if not text and not article:
+        print_error("Provide tweet text or use --article <file> to post an article")
+        raise typer.Exit(EXIT_ERROR)
+
+    # --- Article mode ---
+    if article:
+        # Check Premium subscription first (before reading the file)
+        with get_client(account) as client:
+            if not is_premium_user(client):
+                print_error(
+                    "Posting articles requires a Premium or Premium+ subscription. "
+                    "Your account does not have Premium."
+                )
+                raise typer.Exit(EXIT_ERROR)
+
+        if not article.exists() or not article.is_file():
+            print_error(f"Article file not found: {article}")
+            raise typer.Exit(EXIT_ERROR)
+
+        from clix.utils.article import markdown_to_content_state
+
+        article_content = article.read_text(encoding="utf-8")
+        if not article_content.strip():
+            print_error("Article file is empty")
+            raise typer.Exit(EXIT_ERROR)
+
+        # Convert Markdown to Draft.js content_state
+        content_state, article_title = markdown_to_content_state(article_content)
+        # Use explicit text as title override, otherwise use extracted title
+        if text:
+            article_title = text
+
+        cover_media_id: str | None = None
+        with get_client(account) as client:
+            # Upload cover image if provided (first --image is used as cover)
+            if image:
+                validate_media_file(str(image[0]))
+                cover_media_id = upload_media(client, str(image[0]))
+
+            # Create and publish the article
+            result = create_article(
+                client,
+                content_state=content_state,
+                title=article_title,
+                cover_media_id=cover_media_id,
+            )
+
+        if compact or is_json_mode(json_output):
+            output_json(result)
+        elif is_yaml_mode(yaml_output):
+            output_yaml(result)
+        else:
+            title_msg = f' "{article_title}"' if article_title else ""
+            print_success(f"Article{title_msg} posted!")
+        return
+
+    # --- Normal tweet mode ---
 
     # Normalize reply-to: accept full URLs or bare tweet IDs
     if reply_to:

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from clix.models.job import Job, JobSearchResponse
 
 from clix.core.client import APIError, XClient
+from clix.core.constants import GRAPHQL_BASE
 from clix.models.dm import DMConversation
 from clix.models.tweet import TimelineResponse, Tweet
 from clix.models.user import User
@@ -129,6 +130,43 @@ def _parse_tweet_entry(item_content: dict[str, Any]) -> Tweet | None:
         result = result.get("tweet", result)
 
     return Tweet.from_api_result(result)
+
+
+# =============================================================================
+# Viewer / Premium Check
+# =============================================================================
+
+
+def get_viewer(client: XClient) -> dict[str, Any]:
+    """Fetch the authenticated user's profile via the Viewer GraphQL operation.
+
+    Returns the raw user result dict from the API response.
+    """
+    variables = {
+        "withCommunitiesMemberships": False,
+        "withSubscribedTab": False,
+        "withCommunitiesCreation": False,
+    }
+    data = client.graphql_get("Viewer", variables)
+    return data.get("data", {}).get("viewer", {}).get("user_results", {}).get("result", {})
+
+
+def get_viewer_user(client: XClient) -> User | None:
+    """Fetch the authenticated user as a User model (includes premium status)."""
+    result = get_viewer(client)
+    if not result:
+        return None
+    return User.from_api_result(result)
+
+
+def is_premium_user(client: XClient) -> bool:
+    """Check if the authenticated user has a Premium subscription.
+
+    Premium subscribers have the blue verified badge (is_blue_verified).
+    Articles and note tweets (long-form posts) require Premium or Premium+.
+    """
+    viewer = get_viewer(client)
+    return viewer.get("is_blue_verified", False)
 
 
 # =============================================================================
@@ -739,6 +777,128 @@ def create_tweet(
         )
 
     return data
+
+
+def create_article(
+    client: XClient,
+    content_state: dict[str, Any],
+    title: str = "",
+    cover_media_id: str | None = None,
+) -> dict[str, Any]:
+    """Create and publish an X Article. Requires Premium.
+
+    Uses the article API (3-step flow):
+    1. ArticleEntityDraftCreate — creates an empty draft
+    2. ArticleEntityUpdateContent — sets Draft.js content + title
+    3. ArticleEntityPublish — publishes the article as a tweet
+
+    Args:
+        client: Authenticated XClient instance.
+        content_state: Draft.js content_state dict (blocks + entity_map).
+        title: Article title.
+        cover_media_id: Uploaded media ID for the cover image (optional).
+
+    Returns:
+        The publish response dict containing the article and tweet data.
+    """
+    article_features = {
+        "profile_label_improvements_pcf_label_in_post_enabled": True,
+        "responsive_web_profile_redirect_enabled": False,
+        "rweb_tipjar_consumption_enabled": False,
+        "verified_phone_label_enabled": False,
+        "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+        "responsive_web_graphql_timeline_navigation_enabled": True,
+    }
+
+    def _check_errors(data: dict[str, Any], step: str) -> None:
+        errors = data.get("errors")
+        if errors:
+            msg = errors[0].get("message", "Unknown error") if errors else "Unknown error"
+            raise APIError(f"Article {step} failed: {msg}", response_data=data)
+
+    # Article operations use hardcoded query IDs with explicit features.
+    # We call _request directly because graphql_post_raw doesn't send features.
+    def _article_post(operation: str, variables: dict[str, Any]) -> dict[str, Any]:
+        from clix.core.endpoints import FALLBACK_OPERATIONS
+
+        query_id = FALLBACK_OPERATIONS[operation]
+        url = f"{GRAPHQL_BASE}/{query_id}/{operation}"
+        json_data: dict[str, Any] = {
+            "variables": variables,
+            "features": article_features,
+            "queryId": query_id,
+        }
+        return client._request("POST", url, json_data=json_data)
+
+    # Step 1: Create empty draft
+    draft_data = _article_post(
+        "ArticleEntityDraftCreate",
+        {"content_state": {"blocks": [], "entity_map": []}, "title": ""},
+    )
+    _check_errors(draft_data, "draft creation")
+
+    # Extract article entity ID from response
+    article_id = _find_article_id(draft_data)
+    if not article_id:
+        raise APIError(
+            "Article draft creation failed: no article ID in response",
+            response_data=draft_data,
+        )
+
+    # Step 2: Update content
+    update_vars = {"content_state": content_state, "article_entity": article_id}
+    content_data = _article_post(
+        "ArticleEntityUpdateContent",
+        update_vars,
+    )
+    _check_errors(content_data, "content update")
+
+    # Step 2b: Update title (if provided)
+    if title:
+        title_data = _article_post(
+            "ArticleEntityUpdateTitle",
+            {"articleEntityId": article_id, "title": title},
+        )
+        _check_errors(title_data, "title update")
+
+    # Step 2c: Update cover media (if provided)
+    if cover_media_id:
+        cover_data = _article_post(
+            "ArticleEntityUpdateCoverMedia",
+            {"articleEntityId": article_id, "media_id": cover_media_id},
+        )
+        _check_errors(cover_data, "cover media update")
+
+    # Step 3: Publish
+    publish_data = _article_post(
+        "ArticleEntityPublish",
+        {"articleEntityId": article_id, "visibilitySetting": "Public"},
+    )
+    _check_errors(publish_data, "publish")
+
+    return publish_data
+
+
+def _find_article_id(data: dict[str, Any]) -> str | None:
+    """Extract article entity ID from a draft creation response."""
+    root = data.get("data", {})
+
+    # Walk the response looking for an article ID
+    def _walk(obj: Any) -> str | None:
+        if not isinstance(obj, dict):
+            return None
+        # Check for id field that looks like a snowflake ID
+        for key in ("id", "rest_id", "article_entity_id"):
+            val = obj.get(key)
+            if isinstance(val, str) and val.isdigit() and len(val) > 10:
+                return val
+        for v in obj.values():
+            found = _walk(v)
+            if found:
+                return found
+        return None
+
+    return _walk(root)
 
 
 def delete_tweet(client: XClient, tweet_id: str) -> dict[str, Any]:

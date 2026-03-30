@@ -28,6 +28,11 @@ class User(BaseModel):
     pinned_tweet_id: str | None = None
 
     @property
+    def is_premium(self) -> bool:
+        """Whether this user has a Premium subscription (blue verified)."""
+        return self.verified
+
+    @property
     def profile_url(self) -> str:
         """Full URL to the user's profile."""
         return f"https://x.com/{self.handle}"

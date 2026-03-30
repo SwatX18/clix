@@ -16,6 +16,9 @@ from clix.core.api import (
     bookmark_tweet as _bookmark_tweet,
 )
 from clix.core.api import (
+    create_article as _create_article,
+)
+from clix.core.api import (
     create_list as _create_list,
 )
 from clix.core.api import (
@@ -86,6 +89,12 @@ from clix.core.api import (
 )
 from clix.core.api import (
     get_user_tweets as _get_user_tweets,
+)
+from clix.core.api import (
+    get_viewer_user as _get_viewer_user,
+)
+from clix.core.api import (
+    is_premium_user as _is_premium_user,
 )
 from clix.core.api import (
     like_tweet as _like_tweet,
@@ -537,6 +546,57 @@ def post_tweet(
             )
             if media_ids:
                 result = {**result, "media_ids": media_ids}
+            return _serialize(result)
+    except Exception as e:
+        return _error_response(e)
+
+
+@mcp.tool()
+def post_article(
+    content: str,
+    title: str = "",
+    cover_image_path: str | None = None,
+) -> str:
+    """Post a rich-formatted X Article. Requires Premium subscription.
+
+    The content should be in Markdown format. It will be converted to Draft.js
+    and published as an X Article with title, headers, formatting, and images.
+
+    Args:
+        content: The article content in Markdown format.
+        title: Article title (extracted from first H1 heading if not provided).
+        cover_image_path: File path to a cover image (optional).
+    """
+    try:
+        from clix.utils.article import markdown_to_content_state
+
+        if not content.strip():
+            return _error_response(ValueError("Article content is empty"))
+
+        # Convert Markdown to Draft.js content_state
+        content_state, extracted_title = markdown_to_content_state(content)
+        article_title = title or extracted_title
+
+        with XClient() as client:
+            # Check premium status
+            if not _is_premium_user(client):
+                return json.dumps(
+                    {
+                        "error": "Posting articles requires a Premium or Premium+ subscription",
+                        "type": "PremiumRequired",
+                    }
+                )
+
+            cover_media_id: str | None = None
+            if cover_image_path:
+                cover_media_id = _upload_media(client, file_path=cover_image_path)
+
+            result = _create_article(
+                client,
+                content_state=content_state,
+                title=article_title,
+                cover_media_id=cover_media_id,
+            )
             return _serialize(result)
     except Exception as e:
         return _error_response(e)
@@ -1071,6 +1131,31 @@ def get_job(job_id: str) -> str:
 # =============================================================================
 # Info Tools
 # =============================================================================
+
+
+@mcp.tool()
+def check_premium() -> str:
+    """Check if the authenticated account has a Premium subscription.
+
+    Returns subscription status including whether the account can post articles.
+    """
+    try:
+        with XClient() as client:
+            viewer = _get_viewer_user(client)
+            if viewer is None:
+                return json.dumps({"error": "Could not fetch user info", "type": "APIError"})
+            return json.dumps(
+                {
+                    "user_id": viewer.id,
+                    "handle": viewer.handle,
+                    "name": viewer.name,
+                    "is_premium": viewer.is_premium,
+                    "can_post_articles": viewer.is_premium,
+                    "verified": viewer.verified,
+                }
+            )
+    except Exception as e:
+        return _error_response(e)
 
 
 @mcp.tool()

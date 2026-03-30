@@ -40,6 +40,14 @@ FALLBACK_OPERATIONS: dict[str, str] = {
     "CreateBookmark": "aoDbu3RHznuiSkQ9aNM67Q",
     "DeleteBookmark": "Wlmlj2-xzyS1GN3a6cj-mQ",
     "DMMessageDeleteMutation": "BJ6DtxA2llfjnRoRjaiIiw",
+    # Article operations — in lazy-loaded bundle.TwitterArticles chunk
+    "ArticleEntityDraftCreate": "g1l5N8BxGewYuCy5USe_bQ",
+    "ArticleEntityUpdateTitle": "x75E2ABzm8_mGTg1bz8hcA",
+    "ArticleEntityUpdateContent": "M7N2FrPrlOmu-YrVIBxFnQ",
+    "ArticleEntityUpdateCoverMedia": "Es8InPh7mEkK9PxclxFAVQ",
+    "ArticleEntityPublish": "m4SHicYMoWO_qkLvjhDk7Q",
+    "ArticleEntityDelete": "e4lWqB6m2TA8Fn_j9L9xEA",
+    "ArticleEntityUnpublish": "WbeMAOZdMHilHrqhgpjObw",
 }
 
 # --- Bundle URL patterns ---
