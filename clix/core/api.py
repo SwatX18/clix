@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from clix.models.job import Job, JobSearchResponse
 
 from clix.core.client import APIError, XClient
-from clix.core.constants import GRAPHQL_BASE
 from clix.models.dm import DMConversation
 from clix.models.tweet import TimelineResponse, Tweet
 from clix.models.user import User
@@ -816,28 +815,14 @@ def create_article(
             msg = errors[0].get("message", "Unknown error") if errors else "Unknown error"
             raise APIError(f"Article {step} failed: {msg}", response_data=data)
 
-    # Article operations use hardcoded query IDs with explicit features.
-    # We call _request directly because graphql_post_raw doesn't send features.
-    def _article_post(operation: str, variables: dict[str, Any]) -> dict[str, Any]:
-        from clix.core.endpoints import FALLBACK_OPERATIONS
-
-        query_id = FALLBACK_OPERATIONS[operation]
-        url = f"{GRAPHQL_BASE}/{query_id}/{operation}"
-        json_data: dict[str, Any] = {
-            "variables": variables,
-            "features": article_features,
-            "queryId": query_id,
-        }
-        return client._request("POST", url, json_data=json_data)
-
     # Step 1: Create empty draft
-    draft_data = _article_post(
+    draft_data = client.graphql_post(
         "ArticleEntityDraftCreate",
         {"content_state": {"blocks": [], "entity_map": []}, "title": ""},
+        features=article_features,
     )
     _check_errors(draft_data, "draft creation")
 
-    # Extract article entity ID from response
     article_id = _find_article_id(draft_data)
     if not article_id:
         raise APIError(
@@ -846,33 +831,36 @@ def create_article(
         )
 
     # Step 2: Update content
-    update_vars = {"content_state": content_state, "article_entity": article_id}
-    content_data = _article_post(
+    content_data = client.graphql_post(
         "ArticleEntityUpdateContent",
-        update_vars,
+        {"content_state": content_state, "article_entity": article_id},
+        features=article_features,
     )
     _check_errors(content_data, "content update")
 
     # Step 2b: Update title (if provided)
     if title:
-        title_data = _article_post(
+        title_data = client.graphql_post(
             "ArticleEntityUpdateTitle",
             {"articleEntityId": article_id, "title": title},
+            features=article_features,
         )
         _check_errors(title_data, "title update")
 
     # Step 2c: Update cover media (if provided)
     if cover_media_id:
-        cover_data = _article_post(
+        cover_data = client.graphql_post(
             "ArticleEntityUpdateCoverMedia",
             {"articleEntityId": article_id, "media_id": cover_media_id},
+            features=article_features,
         )
         _check_errors(cover_data, "cover media update")
 
     # Step 3: Publish
-    publish_data = _article_post(
+    publish_data = client.graphql_post(
         "ArticleEntityPublish",
         {"articleEntityId": article_id, "visibilitySetting": "Public"},
+        features=article_features,
     )
     _check_errors(publish_data, "publish")
 
